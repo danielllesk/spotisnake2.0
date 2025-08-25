@@ -322,8 +322,7 @@ async def start_game(screen, album_result=None):
     print(f"DEBUG: snake_logic.py - fruit_image available: {fruit_image is not None}")
     pygame.display.set_caption('DiscogSnake')
     
-    # Wake up backend and show loading screen
-    await wake_up_backend()
+    # Show loading screen (backend wake-up moved to start menu)
     await show_backend_loading_screen(screen)
 
     test_font_object = None
@@ -391,17 +390,17 @@ async def start_game(screen, album_result=None):
     # Download and process the album cover
     print("DEBUG: snake_logic.py - Downloading album cover")
     try:
-        # Download at exact size needed for better quality
-        # 600x600 screen / 60x60 pieces = 10x10 grid, so download at 600x600 for exact fit
-        album_cover = await download_and_resize_album_cover_async(album_image_url, 600, 600)
+        # Download at higher resolution for better quality
+        # 600x600 screen / 60x60 pieces = 10x10 grid, so download at 1800x1800 for better quality
+        album_cover = await download_and_resize_album_cover_async(album_image_url, 1800, 1800)
         if album_cover:
             print("DEBUG: snake_logic.py - Album cover downloaded successfully")
         else:
             print("DEBUG: snake_logic.py - Failed to download album cover, using fallback")
-            album_cover = create_fallback_album_cover(600, 600)
+            album_cover = create_fallback_album_cover(1800, 1800)
     except Exception as e:
         print(f"DEBUG: snake_logic.py - Error downloading album cover: {e}")
-        album_cover = create_fallback_album_cover(600, 600)
+        album_cover = create_fallback_album_cover(1800, 1800)
 
     # Cut the album cover into pieces
     print("DEBUG: snake_logic.py - Cutting album cover into pieces")
@@ -523,6 +522,9 @@ async def start_game(screen, album_result=None):
     speed_increase_interval = 5  # Increase every 5 pieces
     pieces_eaten = 0
     
+    # Input buffering to prevent rapid direction changes
+    direction_changed_this_frame = False
+    
     # Main game loop
     while not game_over:
         for event in pygame.event.get():
@@ -530,15 +532,19 @@ async def start_game(screen, album_result=None):
                 print("DEBUG: snake_logic.py - QUIT event received")
                 await quit_game_async()
                 return
-            elif event.type == pygame.KEYDOWN:
+            elif event.type == pygame.KEYDOWN and not direction_changed_this_frame:
                 if event.key == pygame.K_UP and snake_direction[1] != GRID_SIZE:
                     snake_direction = [0, -GRID_SIZE]
+                    direction_changed_this_frame = True
                 elif event.key == pygame.K_DOWN and snake_direction[1] != -GRID_SIZE:
                     snake_direction = [0, GRID_SIZE]
+                    direction_changed_this_frame = True
                 elif event.key == pygame.K_LEFT and snake_direction[0] != GRID_SIZE:
                     snake_direction = [-GRID_SIZE, 0]
+                    direction_changed_this_frame = True
                 elif event.key == pygame.K_RIGHT and snake_direction[0] != -GRID_SIZE:
                     snake_direction = [GRID_SIZE, 0]
+                    direction_changed_this_frame = True
                 elif event.key == pygame.K_ESCAPE:
                     print("DEBUG: snake_logic.py - ESC key pressed, returning to menu")
                     await main_menu()
@@ -551,7 +557,7 @@ async def start_game(screen, album_result=None):
         if (new_head[0] < 0 or new_head[0] >= width or 
             new_head[1] < 0 or new_head[1] >= height or 
             new_head in snake):
-            print("DEBUG: snake_logic.py - Game over due to collision")
+            print(f"DEBUG: snake_logic.py - Game over due to collision at {new_head}")
             game_over = True
             break
 
@@ -595,6 +601,9 @@ async def start_game(screen, album_result=None):
         pygame.display.flip()
         clock.tick(current_speed)
         await asyncio.sleep(0.01)
+        
+        # Reset direction change flag for next frame
+        direction_changed_this_frame = False
 
     print("DEBUG: snake_logic.py - Game over, showing click to continue")
     

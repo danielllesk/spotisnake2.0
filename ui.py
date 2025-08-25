@@ -66,6 +66,11 @@ async def back_to_menu():
 async def start_menu():
     """Displays the main start menu."""
     print("DEBUG: ui.py - start_menu called")
+    
+    # Wake up backend once at the start
+    from snake_logic import wake_up_backend
+    await wake_up_backend()
+    
     clock = pygame.time.Clock()
     
     # Main menu button - positioned 3/4 down the page
