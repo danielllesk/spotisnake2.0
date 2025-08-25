@@ -5,7 +5,8 @@ import base64
 from datetime import timedelta
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS, cross_origin
-from shared_constants import *
+# Don't import shared_constants in backend context
+# from shared_constants import *
 import logging
 
 logging.basicConfig(
@@ -46,13 +47,13 @@ def search_albums():
     """Search for albums using Discogs API"""
     logging.debug("DEBUG: discogs_backend.py - Search endpoint called")
     
-    query = request.args.get('q', '')
-    if not query:
-        return jsonify({"error": "No query provided"}), 400
-    
-    logging.debug(f"DEBUG: discogs_backend.py - Searching for: {query}")
-    
     try:
+        query = request.args.get('q', '')
+        if not query:
+            return jsonify({"error": "No query provided"}), 400
+        
+        logging.debug(f"DEBUG: discogs_backend.py - Searching for: {query}")
+        
         # Build the Discogs API URL
         search_url = f"{DISCOGS_API_URL}/database/search"
         params = {
@@ -69,12 +70,16 @@ def search_albums():
         # Add token if available
         if DISCOGS_TOKEN:
             headers['Authorization'] = f'Discogs token={DISCOGS_TOKEN}'
+            logging.debug(f"DEBUG: discogs_backend.py - Using token: {DISCOGS_TOKEN[:10]}...")
+        else:
+            logging.debug("DEBUG: discogs_backend.py - No token available")
         
+        logging.debug(f"DEBUG: discogs_backend.py - Making request to: {search_url}")
         response = requests.get(search_url, params=params, headers=headers, timeout=10)
         response.raise_for_status()
         
         data = response.json()
-        logging.debug(f"DEBUG: discogs_backend.py - Discogs API response: {data}")
+        logging.debug(f"DEBUG: discogs_backend.py - Discogs API response received")
         
         return jsonify(data)
         
@@ -83,6 +88,8 @@ def search_albums():
         return jsonify({"error": f"Request failed: {str(e)}"}), 500
     except Exception as e:
         logging.error(f"DEBUG: discogs_backend.py - Unexpected error: {e}")
+        import traceback
+        logging.error(f"DEBUG: discogs_backend.py - Traceback: {traceback.format_exc()}")
         return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
 
 @app.route('/download_album_cover', methods=['POST'])
@@ -93,6 +100,9 @@ def download_album_cover():
     
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+            
         image_url = data.get('image_url')
         
         if not image_url:
@@ -125,6 +135,8 @@ def download_album_cover():
         return jsonify({"error": f"Image download failed: {str(e)}"}), 500
     except Exception as e:
         logging.error(f"DEBUG: discogs_backend.py - Unexpected error in image download: {e}")
+        import traceback
+        logging.error(f"DEBUG: discogs_backend.py - Traceback: {traceback.format_exc()}")
         return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
 
 @app.route('/album/<int:album_id>', methods=['GET'])
