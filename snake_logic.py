@@ -95,7 +95,7 @@ async def wake_up_backend():
         '''
         import js
         js.eval(js_code)
-        await asyncio.sleep(1)  # Give backend time to wake up (reduced from 2)
+        await asyncio.sleep(0.5)  # Give backend time to wake up (optimized)
         print("DEBUG: snake_logic.py - Backend wake-up completed")
     except Exception as e:
         print(f"DEBUG: snake_logic.py - Backend wake-up failed: {e}")
@@ -108,7 +108,7 @@ async def show_backend_loading_screen(screen):
     loading_rect = loading_text.get_rect(center=(width//2, height//2))
     
     # Show loading for a shorter time
-    for i in range(30):  # 1.5 seconds at 20 FPS
+    for i in range(20):  # 1 second at 20 FPS
         if game_bg:
             screen.blit(game_bg, (0, 0))
         else:
@@ -390,17 +390,16 @@ async def start_game(screen, album_result=None):
     # Download and process the album cover
     print("DEBUG: snake_logic.py - Downloading album cover")
     try:
-        # Download at higher resolution for better quality
-        # 600x600 screen / 60x60 pieces = 10x10 grid, so download at 1800x1800 for better quality
-        album_cover = await download_and_resize_album_cover_async(album_image_url, 1800, 1800)
+        # Download at full screen size like the original
+        album_cover = await download_and_resize_album_cover_async(album_image_url, width, height)
         if album_cover:
             print("DEBUG: snake_logic.py - Album cover downloaded successfully")
         else:
             print("DEBUG: snake_logic.py - Failed to download album cover, using fallback")
-            album_cover = create_fallback_album_cover(1800, 1800)
+            album_cover = create_fallback_album_cover(width, height)
     except Exception as e:
         print(f"DEBUG: snake_logic.py - Error downloading album cover: {e}")
-        album_cover = create_fallback_album_cover(1800, 1800)
+        album_cover = create_fallback_album_cover(width, height)
 
     # Cut the album cover into pieces
     print("DEBUG: snake_logic.py - Cutting album cover into pieces")
@@ -443,13 +442,29 @@ async def start_game(screen, album_result=None):
 
     def generate_food():
         nonlocal food
-        while True:
+        attempts = 0
+        while attempts < 100:  # Prevent infinite loop
             x = random.randrange(0, width, GRID_SIZE)
             y = random.randrange(0, height, GRID_SIZE)
             food = (x, y)
-            # Don't place food on snake or on revealed album pieces
-            if food not in snake and food not in revealed_pieces:
+            # Don't place food on snake or on revealed album grid positions
+            fruit_album_grid = (food[0] // ALBUM_GRID_SIZE, food[1] // ALBUM_GRID_SIZE)
+            if food not in snake and fruit_album_grid not in revealed_pieces:
+                print(f"DEBUG: snake_logic.py - Generated food at {food}, revealed pieces: {len(revealed_pieces)}")
                 break
+            attempts += 1
+        
+        if attempts >= 100:
+            print("DEBUG: snake_logic.py - Warning: Could not find valid food position after 100 attempts")
+            # Fallback: find any available position
+            for x in range(0, width, GRID_SIZE):
+                for y in range(0, height, GRID_SIZE):
+                    pos = (x, y)
+                    pos_album_grid = (pos[0] // ALBUM_GRID_SIZE, pos[1] // ALBUM_GRID_SIZE)
+                    if pos not in snake and pos_album_grid not in revealed_pieces:
+                        food = pos
+                        print(f"DEBUG: snake_logic.py - Fallback food at {food}")
+                        return
 
     def draw_snake():
         # Draw snake as individual green rectangles
@@ -470,16 +485,11 @@ async def start_game(screen, album_result=None):
 
     def draw_album_pieces():
         # Only draw album pieces that have been revealed
-        for food_pos in revealed_pieces:
-            # Convert food position to album grid position
-            grid_x = food_pos[0] // ALBUM_GRID_SIZE
-            grid_y = food_pos[1] // ALBUM_GRID_SIZE
-            grid_pos = (grid_x, grid_y)
-            
-            if grid_pos in album_pieces:
-                piece = album_pieces[grid_pos]
-                # Draw the piece at the food location (not the grid location)
-                screen.blit(piece, (food_pos[0], food_pos[1]))
+        for pos in revealed_pieces:
+            # Draw the piece at its proper grid position like the original
+            px, py = pos[0] * ALBUM_GRID_SIZE, pos[1] * ALBUM_GRID_SIZE
+            if pos in album_pieces:
+                screen.blit(album_pieces[pos], (px, py))
 
     def draw_ui():
         # Use better retro fonts
@@ -518,7 +528,7 @@ async def start_game(screen, album_result=None):
     await show_click_to_start_screen(screen)
     
     # Speed progression variables
-    current_speed = 5  # Start at 5 (slower)
+    current_speed = 6  # Start at 6
     speed_increase_interval = 5  # Increase every 5 pieces
     pieces_eaten = 0
     
@@ -569,15 +579,20 @@ async def start_game(screen, album_result=None):
         if snake[0] == food:
             score += 10
             pieces_eaten += 1
-            # Reveal the album piece at the food location
-            revealed_pieces.add(food)
-            print(f"DEBUG: snake_logic.py - Food eaten, score: {score}, revealed piece at {food}")
+            # Reveal the album piece at the grid position like the original
+            fruit_album_grid = (food[0] // ALBUM_GRID_SIZE, food[1] // ALBUM_GRID_SIZE)
+            if fruit_album_grid not in revealed_pieces:
+                revealed_pieces.add(fruit_album_grid)
+                print(f"DEBUG: snake_logic.py - Food eaten, score: {score}, revealed piece at grid {fruit_album_grid}")
+            else:
+                print(f"DEBUG: snake_logic.py - Warning: Grid position {fruit_album_grid} already revealed!")
             
             # Increase speed every 5 pieces
             if pieces_eaten % speed_increase_interval == 0:
-                current_speed += 1.5
+                current_speed += 1
                 print(f"DEBUG: snake_logic.py - Speed increased to {current_speed}")
             
+            # Generate new food after revealing the piece
             generate_food()
         # Note: snake doesn't grow, so no else clause needed
 
@@ -599,8 +614,8 @@ async def start_game(screen, album_result=None):
         draw_ui()
         
         pygame.display.flip()
-        clock.tick(current_speed)
-        await asyncio.sleep(0.01)
+        # Use async sleep for better performance like the original
+        await asyncio.sleep(1/current_speed)
         
         # Reset direction change flag for next frame
         direction_changed_this_frame = False
