@@ -68,20 +68,14 @@ async def start_menu():
     print("DEBUG: ui.py - start_menu called")
     clock = pygame.time.Clock()
     
-    # Main menu buttons
-    play_button = pygame.Rect(width//2 - 150, height//2 - 50, 300, 50)
-    quit_button = pygame.Rect(width//2 - 150, height//2 + 20, 300, 50)
+    # Main menu button
+    play_button = pygame.Rect(width//2 - 100, height//2 - 25, 200, 50)
     
-    title_font = pygame.font.SysFont("Press Start 2P", 55)
     button_font = pygame.font.SysFont("Press Start 2P", 25)
     
-    title = title_font.render("DISCOGSNAKE", True, WHITE)
     play_text = button_font.render("PLAY GAME", True, BLACK)
-    quit_text = button_font.render("QUIT", True, BLACK)
     
-    title_rect = title.get_rect(center=(width//2, height//2 - 150))
     play_text_rect = play_text.get_rect(center=play_button.center)
-    quit_text_rect = quit_text.get_rect(center=quit_button.center)
     
     while True:
         for event in pygame.event.get():
@@ -93,10 +87,6 @@ async def start_menu():
                     print("DEBUG: ui.py - Play button clicked")
                     await start_game(screen)
                     return
-                elif quit_button.collidepoint(event.pos):
-                    print("DEBUG: ui.py - Quit button clicked")
-                    await quit_game_async()
-                    return
         
         # Draw background
         if start_menu_bg:
@@ -104,18 +94,12 @@ async def start_menu():
         else:
             screen.fill(DARK_GREY)
         
-        # Draw title
-        screen.blit(title, title_rect)
-        
-        # Draw buttons
+        # Draw button
         pygame.draw.rect(screen, LIGHT_BLUE, play_button)
-        pygame.draw.rect(screen, LIGHT_BLUE, quit_button)
         pygame.draw.rect(screen, BLACK, play_button, 2)
-        pygame.draw.rect(screen, BLACK, quit_button, 2)
         
         # Draw button text
         screen.blit(play_text, play_text_rect)
-        screen.blit(quit_text, quit_text_rect)
         
         pygame.display.flip()
         clock.tick(60)

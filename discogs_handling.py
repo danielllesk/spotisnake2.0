@@ -20,7 +20,7 @@ DISCOGS_USER_AGENT = "SpotiSnake/1.0 +https://github.com/yourusername/spotisnake
 DISCOGS_TOKEN = os.environ.get("DISCOGS_TOKEN", "")  # Optional personal access token
 
 # Use deployed backend URL for production (if we create a Discogs backend)
-BACKEND_URL = os.environ.get("DISCOGSNAKE_BACKEND_URL", "https://discogsnake.onrender.com")
+BACKEND_URL = os.environ.get("DISCOGSNAKE_BACKEND_URL", "https://spotisnake2-0.onrender.com")
 
 clock = pygame.time.Clock()
 pygame.init()
@@ -82,6 +82,7 @@ async def search_album_via_discogs(query):
     
     # Try to use backend first, fallback to direct API
     search_url = f"{BACKEND_URL}/search?q={encoded_query}"
+    print(f"DEBUG: discogs_handling.py - Backend URL: {search_url}")
     
     js_code = f'''
     console.log("JS: Starting Discogs search for: {query}");
@@ -91,45 +92,57 @@ async def search_album_via_discogs(query):
         method: "GET",
         headers: {{
             "Accept": "application/json"
-        }}
+        }},
+        mode: "cors"
     }})
     .then(response => {{
-        console.log("JS: Discogs search response status:", response.status);
-        console.log("JS: Discogs search response ok:", response.ok);
+        console.log("JS: Backend response status:", response.status);
+        console.log("JS: Backend response ok:", response.ok);
         
         if (!response.ok) {{
-            throw new Error(`HTTP error! status: ${{response.status}}`);
+            console.log("JS: Backend failed, trying direct API");
+            throw new Error(`Backend HTTP error! status: ${{response.status}}`);
         }}
         
         return response.json();
     }})
     .then(data => {{
-        console.log("JS: Discogs search data received:", data);
+        console.log("JS: Backend search data received:", data);
+        console.log("JS: Backend data type:", typeof data);
+        console.log("JS: Backend data keys:", Object.keys(data));
+        console.log("JS: Backend data results length:", data.results ? data.results.length : "no results");
+        console.log("JS: Setting window.discogs_search_result");
         window.discogs_search_result = data;
+        console.log("JS: window.discogs_search_result set:", window.discogs_search_result);
+        return Promise.resolve(); // Don't continue to fallback
     }})
     .catch(error => {{
-        console.log("JS: Discogs search error:", error);
+        console.log("JS: Backend search error:", error);
         // Fallback to direct Discogs API
         console.log("JS: Falling back to direct Discogs API");
         const directUrl = "{DISCOGS_API_URL}/database/search?q={encoded_query}&type=release&format=album";
+        console.log("JS: Direct API URL:", directUrl);
         
         return fetch(directUrl, {{
             method: "GET",
             headers: {{
                 "User-Agent": "{DISCOGS_USER_AGENT}",
                 "Accept": "application/json"
+            }},
+            mode: "cors"
+        }})
+        .then(response => {{
+            if (response && response.ok) {{
+                console.log("JS: Direct API response ok");
+                return response.json();
             }}
+            console.log("JS: Direct API failed, status:", response ? response.status : "no response");
+            throw new Error("Both backend and direct API failed");
+        }})
+        .then(data => {{
+            console.log("JS: Direct Discogs API data received:", data);
+            window.discogs_search_result = data;
         }});
-    }})
-    .then(response => {{
-        if (response && response.ok) {{
-            return response.json();
-        }}
-        throw new Error("Both backend and direct API failed");
-    }})
-    .then(data => {{
-        console.log("JS: Direct Discogs API data received:", data);
-        window.discogs_search_result = data;
     }})
     .catch(error => {{
         console.log("JS: All search methods failed:", error);
@@ -144,6 +157,8 @@ async def search_album_via_discogs(query):
         if hasattr(js.window, 'discogs_search_result'):
             result = js.window.discogs_search_result
             print(f"DEBUG: discogs_handling.py - Discogs search result: {result}")
+            print(f"DEBUG: discogs_handling.py - Result type: {type(result)}")
+            print(f"DEBUG: discogs_handling.py - Result string representation: {str(result)}")
             
             # Handle different result types
             if isinstance(result, dict):
@@ -154,6 +169,31 @@ async def search_album_via_discogs(query):
                     return None
             else:
                 print(f"DEBUG: discogs_handling.py - Unexpected result type: {type(result)}")
+                # Try to convert browser Object to Python dict
+                try:
+                    # Use JavaScript to convert the object to JSON string
+                    js_code = '''
+                    try {
+                        const jsonStr = JSON.stringify(window.discogs_search_result);
+                        window.converted_discogs_result = jsonStr;
+                    } catch(e) {
+                        window.converted_discogs_result = null;
+                    }
+                    '''
+                    js.eval(js_code)
+                    await asyncio.sleep(0.1)
+                    
+                    if hasattr(js.window, 'converted_discogs_result') and js.window.converted_discogs_result:
+                        import json
+                        converted_result = json.loads(js.window.converted_discogs_result)
+                        print(f"DEBUG: discogs_handling.py - Converted result: {converted_result}")
+                        if 'results' in converted_result:
+                            return converted_result
+                        elif 'error' in converted_result:
+                            print(f"DEBUG: discogs_handling.py - Converted Discogs search error: {converted_result['error']}")
+                            return None
+                except Exception as e:
+                    print(f"DEBUG: discogs_handling.py - Error converting browser object: {e}")
                 return None
         else:
             print("DEBUG: discogs_handling.py - No Discogs search result available")
@@ -221,6 +261,7 @@ async def download_and_resize_album_cover_async(url, target_width, target_height
                 headers: {{
                     "Content-Type": "application/json"
                 }},
+                mode: "cors",
                 body: JSON.stringify({{"image_url": "{url}"}})
             }});
             
@@ -477,27 +518,144 @@ def create_visual_album_cover(image_url, target_width, target_height):
         return create_fallback_album_cover(target_width, target_height)
 
 async def base64_to_pygame_surface_pygbag(base64_data, target_width, target_height):
-    """Convert base64 image data to pygame surface in pygbag environment"""
+    """Convert base64 data to pygame surface specifically for pygbag/browser environment"""
     try:
         import base64
-        import io
         
         # Decode base64 data
         image_data = base64.b64decode(base64_data)
         
-        # Create a BytesIO object
-        image_stream = io.BytesIO(image_data)
+        # Since pygame.image.load() doesn't work in browser, we'll create a surface
+        # and manually set pixels based on the image data
+        surface = pygame.Surface((target_width, target_height))
         
-        # Load the image using pygame
-        image = pygame.image.load(image_stream)
+        # Use JavaScript to get pixel data from the image
+        js_code = f'''
+        try {{
+            // Create a canvas element
+            const canvas = document.createElement('canvas');
+            canvas.width = {target_width};
+            canvas.height = {target_height};
+            const ctx = canvas.getContext('2d');
+            
+            // Create an image element
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            
+            img.onload = function() {{
+                // Draw the image on the canvas, scaled to fit
+                ctx.drawImage(img, 0, 0, {target_width}, {target_height});
+                
+                // Get the pixel data
+                const imageData = ctx.getImageData(0, 0, {target_width}, {target_height});
+                window.album_cover_pixels = imageData.data;
+                window.album_cover_loaded = true;
+                console.log("Album cover pixels extracted successfully");
+            }};
+            
+            img.onerror = function() {{
+                console.log("Failed to load album cover image");
+                window.album_cover_loaded = false;
+            }};
+            
+            // Set the base64 data as src
+            img.src = "data:image/jpeg;base64,{base64_data}";
+            
+        }} catch(e) {{
+            console.log("Error creating canvas:", e);
+            window.album_cover_loaded = false;
+        }}
+        '''
         
-        # Resize the image
-        resized_image = pygame.transform.scale(image, (target_width, target_height))
+        import js
+        js.eval(js_code)
         
-        return resized_image
+        # Wait for the image to load and be drawn to canvas
+        import asyncio
+        await asyncio.sleep(0.3)
+        
+        # Check if the image was loaded successfully
+        if hasattr(js.window, 'album_cover_loaded') and js.window.album_cover_loaded:
+            print(f"DEBUG: discogs_handling.py - Real album cover loaded and drawn to canvas")
+            
+            # Get the pixel data from JavaScript
+            if hasattr(js.window, 'album_cover_pixels'):
+                pixels = js.window.album_cover_pixels
+                
+                # Convert JavaScript array to Python and set pixels
+                for y in range(target_height):
+                    for x in range(target_width):
+                        idx = (y * target_width + x) * 4  # RGBA format
+                        r = int(pixels[idx])
+                        g = int(pixels[idx + 1])
+                        b = int(pixels[idx + 2])
+                        a = int(pixels[idx + 3])
+                        surface.set_at((x, y), (r, g, b, a))
+                
+                print(f"DEBUG: discogs_handling.py - Real album cover surface created: {surface.get_size()}")
+                return surface
+            else:
+                print(f"DEBUG: discogs_handling.py - No pixel data found, using visual representation")
+                return create_visual_album_cover_from_data(image_data, target_width, target_height)
+        else:
+            print(f"DEBUG: discogs_handling.py - Failed to load real album cover, using visual representation")
+            return create_visual_album_cover_from_data(image_data, target_width, target_height)
+            
     except Exception as e:
-        print(f"DEBUG: discogs_handling.py - Error in base64_to_pygame_surface_pygbag: {e}")
-        return None
+        print(f"DEBUG: discogs_handling.py - Error creating pygame surface from base64: {e}")
+        return create_visual_album_cover_from_data(image_data, target_width, target_height)
+
+def create_visual_album_cover_from_data(image_data, target_width, target_height):
+    """Create a visual album cover from image data when pygame.image.load fails"""
+    try:
+        # Generate a unique color pattern based on the image data
+        import hashlib
+        hash_value = hashlib.md5(image_data).hexdigest()
+        
+        # Create a surface
+        surface = pygame.Surface((target_width, target_height))
+        
+        # Use the hash to generate a consistent color palette
+        r_base = int(hash_value[0:2], 16)
+        g_base = int(hash_value[2:4], 16)
+        b_base = int(hash_value[4:6], 16)
+        
+        # Ensure minimum brightness
+        r_base = max(r_base, 50)
+        g_base = max(g_base, 50)
+        b_base = max(b_base, 50)
+        
+        # Create a more vibrant pattern
+        for y in range(target_height):
+            for x in range(target_width):
+                # Create a gradient pattern
+                progress_x = x / target_width
+                progress_y = y / target_height
+                
+                # Generate colors with more variation
+                r = int((r_base + progress_x * 100 + progress_y * 50) % 256)
+                g = int((g_base + progress_y * 100 + progress_x * 50) % 256)
+                b = int((b_base + (progress_x + progress_y) * 75) % 256)
+                
+                # Ensure minimum brightness
+                r = max(r, 30)
+                g = max(g, 30)
+                b = max(b, 30)
+                
+                surface.set_at((x, y), (r, g, b))
+        
+        # Add a colored border based on the hash
+        border_color = (
+            int(hash_value[6:8], 16),
+            int(hash_value[8:10], 16),
+            int(hash_value[10:12], 16)
+        )
+        pygame.draw.rect(surface, border_color, surface.get_rect(), 2)
+        
+        return surface
+    except Exception as e:
+        print(f"DEBUG: discogs_handling.py - Error creating visual cover from data: {e}")
+        return create_fallback_album_cover(target_width, target_height)
 
 async def get_album_search_input(screen, font):
     print("DEBUG: discogs_handling.py - get_album_search_input called (START)")
@@ -660,17 +818,37 @@ async def get_album_search_input(screen, font):
                             
                             if discogs_results and 'results' in discogs_results:
                                 albums_found = len(discogs_results['results'])
-                                # Limit to only the first 5 albums
-                                albums_to_process = discogs_results['results'][:5]
-                                for album in albums_to_process:
+                                
+                                # Filter and deduplicate albums by title and artist
+                                unique_albums = []
+                                seen_combinations = set()
+                                
+                                for album in discogs_results['results']:
                                     if album.get('type') == 'release':  # Only include releases
-                                        album_data = {
-                                            'title': album.get('title', 'Unknown Album'),
-                                            'id': album.get('id', 0),
-                                            'image_url': album.get('thumb', None),
-                                            'artist': album.get('artist', 'Unknown Artist')
-                                        }
-                                        search_results.append(album_data)
+                                        title = album.get('title', 'Unknown Album')
+                                        
+                                        # Extract artist from title (usually "Artist - Album" format)
+                                        if ' - ' in title:
+                                            artist, album_name = title.split(' - ', 1)
+                                        else:
+                                            artist = "Unknown"
+                                            album_name = title
+                                        
+                                        # Create a unique key for artist + album combination
+                                        key = f"{artist}|{album_name}"
+                                        
+                                        if key not in seen_combinations:
+                                            seen_combinations.add(key)
+                                            album_data = {
+                                                'title': title,
+                                                'id': album.get('id', 0),
+                                                'image_url': album.get('thumb', None),
+                                                'artist': artist
+                                            }
+                                            unique_albums.append(album_data)
+                                
+                                # Take only the first 5 unique albums
+                                search_results = unique_albums[:5]
                                 print(f"DEBUG: discogs_handling.py - Found {albums_found} albums, displaying top 5")
                                 # Clear any old covers - we'll download them on-demand in the drawing function
                                 album_covers.clear()
@@ -685,7 +863,7 @@ async def get_album_search_input(screen, font):
                                     {
                                         'title': 'Search Failed - Try Again',
                                         'id': 0,
-                                        'image_url': 'https://img.discogs.com/fallback.jpg',
+                                        'image_url': None,  # No fallback URL to avoid CORS issues
                                         'artist': 'Unknown Artist'
                                     }
                                 ]
