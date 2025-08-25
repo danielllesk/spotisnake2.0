@@ -19,37 +19,13 @@ print("DEBUG: discogs_backend.py - Starting Discogs Flask backend initialization
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "supersecretkey")
 
-# CORS configuration
-CORS(app, supports_credentials=True, 
-     origins=[
-         # Allow all localhost variants
-         "http://localhost:8000",
-         "http://127.0.0.1:8000", 
-         "http://[::1]:8000",
-         "http://[::]:8000",
-         "http://localhost:3000",
-         "http://localhost:8080",
-         "http://localhost:9000",
-         "https://localhost:8000",
-         "https://127.0.0.1:8000", 
-         "https://[::1]:8000",
-         "https://[::]:8000",
-         "https://localhost:3000",
-         "https://localhost:8080",
-         "https://localhost:9000",
-         # Production domains
-         "https://discogsnake.onrender.com",
-         "https://danielllesk.itch.io",
-         "https://danielllesk.itch.io/discogsnake",
-         "https://html-classic.itch.zone",
-         # Allow any itch.io subdomain
-         "https://*.itch.io",
-         "https://*.itch.zone"
-     ],
-     allow_headers=["Content-Type", "Authorization", "Origin", "Accept", "X-Requested-With"],
-     expose_headers=["Content-Type", "Authorization"],
+# CORS configuration - more permissive for development
+CORS(app, 
+     origins=["*"],  # Allow all origins for now
+     allow_headers=["*"],
+     expose_headers=["*"],
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-     credentials=True
+     supports_credentials=False  # Disable credentials for now
      )
 
 # Discogs API configuration
