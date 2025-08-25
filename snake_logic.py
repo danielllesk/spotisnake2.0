@@ -132,12 +132,17 @@ async def start_game(screen):
     print(f"DEBUG: snake_logic.py - Created {len(album_pieces)} album pieces")
 
     # Initialize game state
-    snake = [(width//2, height//2)]
+    # Snake should be fixed size (5 blocks) and not grow
+    snake = [(width//2, height//2), (width//2-GRID_SIZE, height//2), (width//2-GRID_SIZE*2, height//2), 
+             (width//2-GRID_SIZE*3, height//2), (width//2-GRID_SIZE*4, height//2)]
     snake_direction = [GRID_SIZE, 0]
     food = None
     score = 0
     game_over = False
     clock = pygame.time.Clock()
+    
+    # Track revealed album pieces
+    revealed_pieces = set()
     
     # Song info display
     current_song = "Discogs Album"
@@ -166,7 +171,8 @@ async def start_game(screen):
             x = random.randrange(0, width, GRID_SIZE)
             y = random.randrange(0, height, GRID_SIZE)
             food = (x, y)
-            if food not in snake:
+            # Don't place food on snake or on revealed album pieces
+            if food not in snake and food not in revealed_pieces:
                 break
 
     def draw_snake():
@@ -183,10 +189,17 @@ async def start_game(screen):
                 pygame.draw.rect(screen, BLACK, (food[0], food[1], GRID_SIZE, GRID_SIZE), 1)
 
     def draw_album_pieces():
-        for (grid_x, grid_y), piece in album_pieces.items():
-            screen_x = grid_x * ALBUM_GRID_SIZE
-            screen_y = grid_y * ALBUM_GRID_SIZE
-            screen.blit(piece, (screen_x, screen_y))
+        # Only draw album pieces that have been revealed
+        for food_pos in revealed_pieces:
+            # Convert food position to album grid position
+            grid_x = food_pos[0] // ALBUM_GRID_SIZE
+            grid_y = food_pos[1] // ALBUM_GRID_SIZE
+            grid_pos = (grid_x, grid_y)
+            
+            if grid_pos in album_pieces:
+                piece = album_pieces[grid_pos]
+                # Draw the piece at the food location (not the grid location)
+                screen.blit(piece, (food_pos[0], food_pos[1]))
 
     def draw_ui():
         # Draw score
@@ -243,25 +256,28 @@ async def start_game(screen):
             game_over = True
             break
 
-        snake.insert(0, new_head)
+        # Move snake (fixed size, so we remove tail and add new head)
+        snake.pop()  # Remove tail
+        snake.insert(0, new_head)  # Add new head
         
         # Check if food is eaten
         if snake[0] == food:
             score += 10
+            # Reveal the album piece at the food location
+            revealed_pieces.add(food)
+            print(f"DEBUG: snake_logic.py - Food eaten, score: {score}, revealed piece at {food}")
             generate_food()
-            print(f"DEBUG: snake_logic.py - Food eaten, score: {score}")
-        else:
-            snake.pop()
+        # Note: snake doesn't grow, so no else clause needed
 
         # Draw everything
         screen.fill(BLACK)
         
-        # Draw album pieces as background
-        draw_album_pieces()
-        
-        # Draw snake and food
+        # Draw snake and food first
         draw_snake()
         draw_food()
+        
+        # Draw revealed album pieces on top
+        draw_album_pieces()
         
         # Draw UI
         draw_ui()
