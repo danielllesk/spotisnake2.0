@@ -1,0 +1,5 @@
+pygame==2.5.2
+discogs-client==2.4.0
+requests==2.31.0
+asyncio
+aiohttp==3.8.5
