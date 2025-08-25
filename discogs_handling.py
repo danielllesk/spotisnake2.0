@@ -48,8 +48,8 @@ def is_pyodide():
         print("DEBUG: discogs_handling.py - js module available but missing required attributes")
         return False
 
-async def search_album_via_discogs(query):
-    """Search for albums using Discogs API"""
+async def search_album_via_discogs(query, max_retries=2):
+    """Search for albums using Discogs API with retry logic for backend wake-up"""
     print(f"DEBUG: discogs_handling.py - search_album_via_discogs called with query: {query}")
     
     # Check if we're in a browser environment
@@ -75,82 +75,100 @@ async def search_album_via_discogs(query):
             ]
         }
     
-    import js
-    
-    # URL encode the query to handle special characters
-    encoded_query = urllib.parse.quote(query)
-    
-    # Try to use backend first, fallback to direct API
-    search_url = f"{BACKEND_URL}/search?q={encoded_query}"
-    print(f"DEBUG: discogs_handling.py - Backend URL: {search_url}")
-    
-    js_code = f'''
-    console.log("JS: Starting Discogs search for: {query}");
-    console.log("JS: Fetching from backend URL: {search_url}");
-    
-    fetch("{search_url}", {{
-        method: "GET",
-        headers: {{
-            "Accept": "application/json"
-        }},
-        mode: "cors"
-    }})
-    .then(response => {{
-        console.log("JS: Backend response status:", response.status);
-        console.log("JS: Backend response ok:", response.ok);
+    # Try multiple times in case backend is slow to wake up
+    for attempt in range(max_retries):
+        print(f"DEBUG: discogs_handling.py - Search attempt {attempt + 1}/{max_retries}")
         
-        if (!response.ok) {{
-            console.log("JS: Backend failed, trying direct API");
-            throw new Error(`Backend HTTP error! status: ${{response.status}}`);
-        }}
+        result = await _search_album_single_attempt(query)
+        if result and 'results' in result:
+            print(f"DEBUG: discogs_handling.py - Search successful on attempt {attempt + 1}")
+            return result
         
-        return response.json();
-    }})
-    .then(data => {{
-        console.log("JS: Backend search data received:", data);
-        console.log("JS: Backend data type:", typeof data);
-        console.log("JS: Backend data keys:", Object.keys(data));
-        console.log("JS: Backend data results length:", data.results ? data.results.length : "no results");
-        console.log("JS: Setting window.discogs_search_result");
-        window.discogs_search_result = data;
-        console.log("JS: window.discogs_search_result set:", window.discogs_search_result);
-        return Promise.resolve(); // Don't continue to fallback
-    }})
-    .catch(error => {{
-        console.log("JS: Backend search error:", error);
-        // Fallback to direct Discogs API
-        console.log("JS: Falling back to direct Discogs API");
-        const directUrl = "{DISCOGS_API_URL}/database/search?q={encoded_query}&type=release&format=album";
-        console.log("JS: Direct API URL:", directUrl);
+        if attempt < max_retries - 1:
+            print(f"DEBUG: discogs_handling.py - Search failed, retrying in 2 seconds...")
+            await asyncio.sleep(2)
+    
+    print(f"DEBUG: discogs_handling.py - All search attempts failed")
+    return None
+
+async def _search_album_single_attempt(query):
+    """Single attempt to search for albums using Discogs API"""
+    try:
+        import js
         
-        return fetch(directUrl, {{
+        # URL encode the query to handle special characters
+        encoded_query = urllib.parse.quote(query)
+        
+        # Try to use backend first, fallback to direct API
+        search_url = f"{BACKEND_URL}/search?q={encoded_query}"
+        print(f"DEBUG: discogs_handling.py - Backend URL: {search_url}")
+        
+        js_code = f'''
+        console.log("JS: Starting Discogs search for: {query}");
+        console.log("JS: Fetching from backend URL: {search_url}");
+        
+        fetch("{search_url}", {{
             method: "GET",
             headers: {{
-                "User-Agent": "{DISCOGS_USER_AGENT}",
                 "Accept": "application/json"
             }},
             mode: "cors"
         }})
         .then(response => {{
-            if (response && response.ok) {{
-                console.log("JS: Direct API response ok");
-                return response.json();
+            console.log("JS: Backend response status:", response.status);
+            console.log("JS: Backend response ok:", response.ok);
+            
+            if (!response.ok) {{
+                console.log("JS: Backend failed, trying direct API");
+                throw new Error(`Backend HTTP error! status: ${{response.status}}`);
             }}
-            console.log("JS: Direct API failed, status:", response ? response.status : "no response");
-            throw new Error("Both backend and direct API failed");
+            
+            return response.json();
         }})
         .then(data => {{
-            console.log("JS: Direct Discogs API data received:", data);
+            console.log("JS: Backend search data received:", data);
+            console.log("JS: Backend data type:", typeof data);
+            console.log("JS: Backend data keys:", Object.keys(data));
+            console.log("JS: Backend data results length:", data.results ? data.results.length : "no results");
+            console.log("JS: Setting window.discogs_search_result");
             window.discogs_search_result = data;
+            console.log("JS: window.discogs_search_result set:", window.discogs_search_result);
+            return Promise.resolve(); // Don't continue to fallback
+        }})
+        .catch(error => {{
+            console.log("JS: Backend search error:", error);
+            // Fallback to direct Discogs API
+            console.log("JS: Falling back to direct Discogs API");
+            const directUrl = "{DISCOGS_API_URL}/database/search?q={encoded_query}&type=release&format=album";
+            console.log("JS: Direct API URL:", directUrl);
+            
+            return fetch(directUrl, {{
+                method: "GET",
+                headers: {{
+                    "User-Agent": "{DISCOGS_USER_AGENT}",
+                    "Accept": "application/json"
+                }},
+                mode: "cors"
+            }})
+            .then(response => {{
+                if (response && response.ok) {{
+                    console.log("JS: Direct API response ok");
+                    return response.json();
+                }}
+                console.log("JS: Direct API failed, status:", response ? response.status : "no response");
+                throw new Error("Both backend and direct API failed");
+            }})
+            .then(data => {{
+                console.log("JS: Direct Discogs API data received:", data);
+                window.discogs_search_result = data;
+            }});
+        }})
+        .catch(error => {{
+            console.log("JS: All search methods failed:", error);
+            window.discogs_search_result = {{ error: error.toString() }};
         }});
-    }})
-    .catch(error => {{
-        console.log("JS: All search methods failed:", error);
-        window.discogs_search_result = {{ error: error.toString() }};
-    }});
-    '''
-    
-    try:
+        '''
+        
         js.eval(js_code)
         await asyncio.sleep(0.5)  # Wait for the fetch to complete
         
@@ -199,7 +217,7 @@ async def search_album_via_discogs(query):
             print("DEBUG: discogs_handling.py - No Discogs search result available")
             return None
     except Exception as e:
-        print(f"DEBUG: discogs_handling.py - Error in search_album_via_discogs: {e}")
+        print(f"DEBUG: discogs_handling.py - Error in _search_album_single_attempt: {e}")
         return None
 
 async def download_and_resize_album_cover_async(url, target_width, target_height):

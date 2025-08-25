@@ -68,16 +68,28 @@ async def start_menu():
     print("DEBUG: ui.py - start_menu called")
     clock = pygame.time.Clock()
     
-    # Main menu button
-    play_button = pygame.Rect(width//2 - 100, height//2 - 25, 200, 50)
+    # Main menu button - positioned 3/4 down the page
+    play_button = pygame.Rect(width//2 - 100, int(height * 0.75) - 25, 200, 50)
     
-    button_font = pygame.font.SysFont("Press Start 2P", 25)
+    # Use a better retro font - try multiple options
+    try:
+        button_font = pygame.font.SysFont("Courier New", 28, bold=True)
+    except:
+        try:
+            button_font = pygame.font.SysFont("Monaco", 26, bold=True)
+        except:
+            try:
+                button_font = pygame.font.SysFont("Consolas", 26, bold=True)
+            except:
+                button_font = pygame.font.SysFont("Arial", 26, bold=True)
     
     play_text = button_font.render("PLAY GAME", True, BLACK)
     
     play_text_rect = play_text.get_rect(center=play_button.center)
     
     while True:
+        mouse_pos = pygame.mouse.get_pos()
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 await quit_game_async()
@@ -94,8 +106,9 @@ async def start_menu():
         else:
             screen.fill(DARK_GREY)
         
-        # Draw button
-        pygame.draw.rect(screen, LIGHT_BLUE, play_button)
+        # Draw button with hover effect
+        button_color = DARK_BLUE if play_button.collidepoint(mouse_pos) else LIGHT_BLUE
+        pygame.draw.rect(screen, button_color, play_button)
         pygame.draw.rect(screen, BLACK, play_button, 2)
         
         # Draw button text
