@@ -118,17 +118,53 @@ def download_album_cover():
         response = requests.get(image_url, headers=headers, timeout=10)
         response.raise_for_status()
         
-        # Convert to base64
-        image_data = response.content
-        base64_data = base64.b64encode(image_data).decode('utf-8')
+        # Get target dimensions from request
+        target_width = data.get('target_width', 600)
+        target_height = data.get('target_height', 600)
         
-        logging.debug(f"DEBUG: discogs_backend.py - Image downloaded successfully, size: {len(image_data)} bytes")
-        
-        return jsonify({
-            "status": 200,
-            "data": base64_data,
-            "size": len(image_data)
-        })
+        # Process and resize the image
+        try:
+            from PIL import Image
+            import io
+            
+            # Load image with PIL
+            image_data = response.content
+            image = Image.open(io.BytesIO(image_data))
+            
+            # Convert to RGB if necessary
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Resize image with high quality
+            resized_image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            
+            # Convert back to bytes
+            output_buffer = io.BytesIO()
+            resized_image.save(output_buffer, format='JPEG', quality=95)
+            processed_image_data = output_buffer.getvalue()
+            
+            # Convert to base64
+            base64_data = base64.b64encode(processed_image_data).decode('utf-8')
+            
+            logging.debug(f"DEBUG: discogs_backend.py - Image processed and resized to {target_width}x{target_height}, size: {len(processed_image_data)} bytes")
+            
+            return jsonify({
+                "status": 200,
+                "data": base64_data,
+                "size": len(processed_image_data),
+                "width": target_width,
+                "height": target_height
+            })
+            
+        except ImportError:
+            # Fallback if PIL is not available
+            logging.warning("DEBUG: discogs_backend.py - PIL not available, returning raw image")
+            base64_data = base64.b64encode(image_data).decode('utf-8')
+            return jsonify({
+                "status": 200,
+                "data": base64_data,
+                "size": len(image_data)
+            })
         
     except requests.exceptions.RequestException as e:
         logging.error(f"DEBUG: discogs_backend.py - Image download error: {e}")
