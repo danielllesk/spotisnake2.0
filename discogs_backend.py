@@ -118,6 +118,9 @@ def download_album_cover():
         response = requests.get(image_url, headers=headers, timeout=10)
         response.raise_for_status()
         
+        # Get the raw image data first
+        image_data = response.content
+        
         # Get target dimensions from request
         target_width = data.get('target_width', 600)
         target_height = data.get('target_height', 600)
@@ -128,7 +131,6 @@ def download_album_cover():
             import io
             
             # Load image with PIL
-            image_data = response.content
             image = Image.open(io.BytesIO(image_data))
             
             # Convert to RGB if necessary
