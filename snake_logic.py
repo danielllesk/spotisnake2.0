@@ -49,6 +49,36 @@ def cut_image_into_pieces(image_surface, piece_width, piece_height):
             pieces[grid_pos] = piece
     return pieces  # {(x, y): surface, ...}
 
+def create_high_quality_pieces_improved(image_surface, piece_width, piece_height):
+    """Creates high-quality pieces with better scaling and anti-aliasing."""
+    pieces = {}
+    grid_cols = image_surface.get_width() // piece_width
+    grid_rows = image_surface.get_height() // piece_height
+    
+    for row in range(grid_rows):
+        for col in range(grid_cols):
+            # Extract the piece from the original image
+            x = col * piece_width
+            y = row * piece_height
+            rect = pygame.Rect(x, y, piece_width, piece_height)
+            piece = image_surface.subsurface(rect).copy()
+            
+            # Create a higher resolution temporary surface for better scaling
+            temp_size = piece_width * 2  # 2x resolution for better quality
+            temp_surface = pygame.Surface((temp_size, temp_size))
+            
+            # Scale up first for better quality
+            scaled_up = pygame.transform.scale(piece, (temp_size, temp_size))
+            temp_surface.blit(scaled_up, (0, 0))
+            
+            # Then scale down to final size with better anti-aliasing
+            final_piece = pygame.transform.scale(temp_surface, (piece_width, piece_height))
+            
+            grid_pos = (col, row)
+            pieces[grid_pos] = final_piece
+    
+    return pieces  # {(x, y): surface, ...}
+
 def create_high_quality_pieces(image_surface, piece_width, piece_height):
     """Creates high-quality pieces by resizing each piece individually for better quality."""
     pieces = {}
@@ -72,14 +102,15 @@ def create_high_quality_pieces(image_surface, piece_width, piece_height):
     return pieces  # {(x, y): surface, ...}
 
 async def wake_up_backend():
-    """Wake up the backend by making a simple ping request"""
+    """Wake up the backend by making a simple ping request and wait for confirmation"""
     try:
         print("DEBUG: snake_logic.py - Waking up backend...")
         # Import BACKEND_URL from discogs_handling
         from discogs_handling import BACKEND_URL
         
-        # Make a request to wake up the backend
+        # Make a request to wake up the backend and wait for response
         js_code = f'''
+        window.backend_wake_up_status = "pending";
         fetch("{BACKEND_URL}/ping", {{
             method: "GET",
             mode: "cors"
@@ -95,27 +126,74 @@ async def wake_up_backend():
         '''
         import js
         js.eval(js_code)
-        await asyncio.sleep(0.5)  # Give backend time to wake up (optimized)
-        print("DEBUG: snake_logic.py - Backend wake-up completed")
+        
+        # Wait for backend to respond (up to 10 seconds)
+        max_attempts = 20  # 20 attempts * 0.5 seconds = 10 seconds
+        for attempt in range(max_attempts):
+            await asyncio.sleep(0.5)
+            
+            # Check if backend responded
+            try:
+                status = js.window.backend_wake_up_status
+                if status == 200:
+                    print("DEBUG: snake_logic.py - Backend is ready!")
+                    return True
+                elif status == "error":
+                    print("DEBUG: snake_logic.py - Backend wake-up failed")
+                    return False
+                # If still pending, continue waiting
+            except:
+                # If status not set yet, continue waiting
+                pass
+        
+        print("DEBUG: snake_logic.py - Backend wake-up timeout")
+        return False
     except Exception as e:
         print(f"DEBUG: snake_logic.py - Backend wake-up failed: {e}")
+        return False
 
 async def show_backend_loading_screen(screen):
     """Show a loading screen while backend starts up"""
     print("DEBUG: snake_logic.py - Showing backend loading screen")
-    loading_font = pygame.font.SysFont("Press Start 2P", 30)
-    loading_text = loading_font.render("Starting up...", True, WHITE)
-    loading_rect = loading_text.get_rect(center=(width//2, height//2))
     
-    # Show loading for a shorter time
-    for i in range(20):  # 1 second at 20 FPS
+    # Use better retro fonts
+    try:
+        font = pygame.font.SysFont("Courier New", 32, bold=True)
+        small_font = pygame.font.SysFont("Courier New", 20, bold=True)
+    except:
+        try:
+            font = pygame.font.SysFont("Monaco", 30, bold=True)
+            small_font = pygame.font.SysFont("Monaco", 18, bold=True)
+        except:
+            font = pygame.font.SysFont("Arial", 30, bold=True)
+            small_font = pygame.font.SysFont("Arial", 18, bold=True)
+    
+    loading_text = font.render("WAKING UP BACKEND...", True, WHITE)
+    info_text = small_font.render("Please wait while we connect to Discogs", True, LIGHT_GREY)
+    
+    loading_rect = loading_text.get_rect(center=(width//2, height//2))
+    info_rect = info_text.get_rect(center=(width//2, height//2 + 50))
+    
+    # Show loading screen for a short time
+    for i in range(20):  # Show for 1 second (20 * 0.05)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                await quit_game_async()
+                return
+        
+        # Draw background
         if game_bg:
             screen.blit(game_bg, (0, 0))
         else:
-            screen.fill(BLACK)
+            screen.fill(DARK_GREY)
+        
+        # Draw loading text
         screen.blit(loading_text, loading_rect)
+        screen.blit(info_text, info_rect)
+        
         pygame.display.flip()
         await asyncio.sleep(0.05)
+    
     print("DEBUG: snake_logic.py - Backend loading screen completed")
 
 async def show_click_to_start_screen(screen):
@@ -210,9 +288,12 @@ async def show_click_to_continue_screen(screen, score):
     
     print("DEBUG: snake_logic.py - Click to continue completed")
 
-async def show_game_over_screen(screen, score, album_result, album_pieces, revealed_pieces):
-    """Show game over screen with two buttons"""
-    print("DEBUG: snake_logic.py - Showing game over screen")
+async def show_game_over_screen(screen, score, album_result, album_pieces, revealed_pieces, won_game=False):
+    """Show game over or win screen with two buttons"""
+    if won_game:
+        print("DEBUG: snake_logic.py - Showing WIN screen")
+    else:
+        print("DEBUG: snake_logic.py - Showing game over screen")
     
     # Use better retro fonts
     try:
@@ -229,8 +310,12 @@ async def show_game_over_screen(screen, score, album_result, album_pieces, revea
             score_font = pygame.font.SysFont("Arial", 28, bold=True)
             button_font = pygame.font.SysFont("Arial", 22, bold=True)
     
-    game_over_text = title_font.render("GAME OVER", True, RED)
-    final_score_text = score_font.render(f"FINAL SCORE: {score}", True, WHITE)
+    if won_game:
+        game_over_text = title_font.render("YOU DA GOAT!", True, GREEN)
+        final_score_text = score_font.render(f"FINAL SCORE: {score}", True, WHITE)
+    else:
+        game_over_text = title_font.render("GAME OVER", True, RED)
+        final_score_text = score_font.render(f"FINAL SCORE: {score}", True, WHITE)
     
     # Create two buttons
     retry_button = pygame.Rect(width//2 - 220, height//2 + 20, 200, 50)
@@ -286,16 +371,11 @@ async def show_game_over_screen(screen, score, album_result, album_pieces, revea
             screen.fill(BLACK)
         
         # Draw revealed album pieces
-        for food_pos in revealed_pieces:
-            # Convert food position to album grid position
-            grid_x = food_pos[0] // ALBUM_GRID_SIZE
-            grid_y = food_pos[1] // ALBUM_GRID_SIZE
-            grid_pos = (grid_x, grid_y)
-            
-            if grid_pos in album_pieces:
-                piece = album_pieces[grid_pos]
-                # Draw the piece at the food location (not the grid location)
-                screen.blit(piece, (food_pos[0], food_pos[1]))
+        for pos in revealed_pieces:
+            # Draw the piece at its proper grid position
+            px, py = pos[0] * ALBUM_GRID_SIZE, pos[1] * ALBUM_GRID_SIZE
+            if pos in album_pieces:
+                screen.blit(album_pieces[pos], (px, py))
         
         screen.blit(game_over_text, game_over_rect)
         screen.blit(final_score_text, score_rect)
@@ -390,19 +470,40 @@ async def start_game(screen, album_result=None):
     # Download and process the album cover
     print("DEBUG: snake_logic.py - Downloading album cover")
     try:
-        # Download at full screen size like the original
-        album_cover = await download_and_resize_album_cover_async(album_image_url, width, height)
+        # Download the original image and upscale it for better quality pieces
+        print(f"DEBUG: snake_logic.py - Original URL: {album_image_url}")
+        
+        # Try a more conservative approach - download at original size and scale less aggressively
+        print(f"DEBUG: snake_logic.py - Using conservative scaling approach")
+        
+        # Download at original 150x150 size first
+        original_cover = await download_and_resize_album_cover_async(album_image_url, 150, 150)
+        if original_cover:
+            print(f"DEBUG: snake_logic.py - Downloaded original 150x150 image")
+            
+            # Scale up to 300x300 (2x instead of 4x) for better quality
+            medium_cover = pygame.transform.scale(original_cover, (300, 300))
+            print(f"DEBUG: snake_logic.py - Scaled to 300x300 for better quality")
+            
+            # Scale up to final size
+            album_cover = pygame.transform.scale(medium_cover, (width, height))
+            print(f"DEBUG: snake_logic.py - Final scale to {width}x{height}")
+        else:
+            print(f"DEBUG: snake_logic.py - Failed to download original image, using fallback")
+            album_cover = create_fallback_album_cover(width, height)
         if album_cover:
+            print(f"DEBUG: snake_logic.py - Downloaded {width}x{height} image directly")
             print("DEBUG: snake_logic.py - Album cover downloaded successfully")
         else:
-            print("DEBUG: snake_logic.py - Failed to download album cover, using fallback")
+            print(f"DEBUG: snake_logic.py - Failed to download image, using fallback")
             album_cover = create_fallback_album_cover(width, height)
     except Exception as e:
         print(f"DEBUG: snake_logic.py - Error downloading album cover: {e}")
         album_cover = create_fallback_album_cover(width, height)
 
-    # Cut the album cover into pieces
+    # Cut the album cover into pieces with different approach
     print("DEBUG: snake_logic.py - Cutting album cover into pieces")
+    # Try using the original cut method but with better source image
     album_pieces = cut_image_into_pieces(album_cover, ALBUM_GRID_SIZE, ALBUM_GRID_SIZE)
     print(f"DEBUG: snake_logic.py - Created {len(album_pieces)} album pieces")
 
@@ -418,6 +519,9 @@ async def start_game(screen, album_result=None):
     
     # Track revealed album pieces
     revealed_pieces = set()
+    
+    # Game state
+    won_game = False
     
     # Song info display
     current_song = "Discogs Album"
@@ -519,6 +623,11 @@ async def start_game(screen, album_result=None):
             easter_text = info_font.render("EASTER EGG!", True, RED)
             screen.blit(easter_text, (10, 80))
 
+    # Initialize random seed for this game session
+    import random
+    import time
+    random.seed(time.time())  # Use current time for true randomness
+    
     # Generate initial food
     generate_food()
 
@@ -569,6 +678,13 @@ async def start_game(screen, album_result=None):
             new_head in snake):
             print(f"DEBUG: snake_logic.py - Game over due to collision at {new_head}")
             game_over = True
+            break
+        
+        # Check for win condition (all album pieces revealed)
+        if len(revealed_pieces) >= 100:  # 10x10 grid = 100 pieces
+            print(f"DEBUG: snake_logic.py - WIN! All album pieces revealed!")
+            game_over = True
+            won_game = True
             break
 
         # Move snake (fixed size, so we remove tail and add new head)
@@ -625,8 +741,8 @@ async def start_game(screen, album_result=None):
     # First show click to continue screen
     await show_click_to_continue_screen(screen, score)
     
-    # Then show game over screen with two buttons
-    await show_game_over_screen(screen, score, album_result, album_pieces, revealed_pieces)
+    # Then show game over/win screen with two buttons
+    await show_game_over_screen(screen, score, album_result, album_pieces, revealed_pieces, won_game)
 
 def create_fallback_album_cover(target_width, target_height):
     """Create a fallback album cover when image download fails"""
@@ -637,8 +753,7 @@ def create_fallback_album_cover(target_width, target_height):
         import random
         import time
         
-        # Use time to create different patterns each time
-        random.seed(int(time.time() * 1000) % 1000)
+        # Don't set random seed - let it be truly random
         
         for y in range(target_height):
             for x in range(target_width):

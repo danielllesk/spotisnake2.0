@@ -222,15 +222,15 @@ async def _search_album_single_attempt(query):
 
 async def download_and_resize_album_cover_async(url, target_width, target_height):
     """Download and resize album cover asynchronously"""
-    
+
     if not url:
         return create_fallback_album_cover(target_width, target_height)
-    
+
     # Try to load the actual image using direct fetch
     try:
         import js
         import base64
-        
+
         # Check if we're in a proper browser environment (pygbag/pyodide)
         if is_pyodide():
             print(f"DEBUG: discogs_handling.py - Running in pygbag/pyodide environment, using browser download")
@@ -265,7 +265,7 @@ async def download_and_resize_album_cover_async(url, target_width, target_height
         except Exception as e:
             print(f"DEBUG: discogs_handling.py - Python download failed: {e}")
             return create_visual_album_cover(url, target_width, target_height)
-    
+
     # Browser-based download - try backend first, fallback to direct download
     js_code = f'''
     console.log("Starting album cover download for: {url}");
@@ -280,7 +280,11 @@ async def download_and_resize_album_cover_async(url, target_width, target_height
                     "Content-Type": "application/json"
                 }},
                 mode: "cors",
-                body: JSON.stringify({{"image_url": "{url}"}})
+                body: JSON.stringify({{
+                    "image_url": "{url}",
+                    "target_width": {target_width},
+                    "target_height": {target_height}
+                }})
             }});
             
             if (backendResponse.ok) {{
@@ -331,29 +335,29 @@ async def download_and_resize_album_cover_async(url, target_width, target_height
         }}
     }})();
     '''
-    
+
     try:
         print(f"DEBUG: discogs_handling.py - Executing JavaScript code for {url}")
         js.eval(js_code)
         print(f"DEBUG: discogs_handling.py - JavaScript code executed, waiting for result")
-        
+
         # Wait for the async JavaScript to complete
         for i in range(10):  # Wait up to 1 second
             await asyncio.sleep(0.1)  # Wait 100ms each time
-            
+
             # Check if the download is complete
             if hasattr(js.window, 'image_download_complete') and js.window.image_download_complete:
                 break
-                
+
             # Also check if we have a result (in case complete flag isn't set)
             if hasattr(js.window, 'image_download_result') and js.window.image_download_result is not None:
                 break
-        
+
         # Get the result and clean up
         result = None
         if hasattr(js.window, 'image_download_result'):
             js_result = js.window.image_download_result
-            
+
             # Convert JavaScript object to Python dictionary
             try:
                 if hasattr(js_result, 'status'):
@@ -369,11 +373,11 @@ async def download_and_resize_album_cover_async(url, target_width, target_height
                     result = js_result
                 else:
                     result = None
-                    
+
             except Exception as e:
                 print(f"DEBUG: discogs_handling.py - Error in conversion process: {e}")
                 result = None
-            
+
             # Clean up the flags for next download
             try:
                 js.window.image_download_result = None
@@ -383,7 +387,7 @@ async def download_and_resize_album_cover_async(url, target_width, target_height
         else:
             print(f"DEBUG: discogs_handling.py - No image_download_result found in window")
             return create_visual_album_cover(url, target_width, target_height)
-            
+
         # Handle different result types
         if isinstance(result, dict):
             status = result.get('status', 500)
@@ -411,11 +415,11 @@ async def download_and_resize_album_cover_async(url, target_width, target_height
 
 def download_and_resize_album_cover(url, target_width, target_height):
     print(f"DEBUG: discogs_handling.py - download_and_resize_album_cover called with url: {url}")
-    
+
     if not url:
         print(f"DEBUG: discogs_handling.py - No URL provided, creating fallback")
         return create_fallback_album_cover(target_width, target_height)
-    
+
     # Use the async version for browser builds
     try:
         # Create a simple event loop to run the async function
@@ -436,37 +440,37 @@ def create_fallback_album_cover(target_width, target_height):
     """Create a fallback album cover when image download fails"""
     try:
         surface = pygame.Surface((target_width, target_height))
-        
+
         # Create a more vibrant, colorful pattern
         import random
         import time
-        
+
         # Use time to create different patterns each time
         random.seed(int(time.time() * 1000) % 1000)
-        
+
         # Create a colorful gradient pattern
         for y in range(target_height):
             for x in range(target_width):
                 # Create a more vibrant pattern
                 progress_x = x / target_width
                 progress_y = y / target_height
-                
+
                 # Generate bright, colorful gradients
                 r = int(128 + 127 * (progress_x + random.random() * 0.3))
                 g = int(128 + 127 * (progress_y + random.random() * 0.3))
                 b = int(128 + 127 * ((progress_x + progress_y) / 2 + random.random() * 0.3))
-                
+
                 # Ensure values are in valid range
                 r = max(50, min(255, r))
                 g = max(50, min(255, g))
                 b = max(50, min(255, b))
-                
+
                 surface.set_at((x, y), (r, g, b))
-        
+
         # Add a colorful border
         border_color = (random.randint(100, 255), random.randint(100, 255), random.randint(100, 255))
         pygame.draw.rect(surface, border_color, surface.get_rect(), 2)
-        
+
         # Add some text to indicate it's an album cover
         try:
             font = pygame.font.SysFont("Arial", min(target_width, target_height) // 8)
@@ -475,7 +479,7 @@ def create_fallback_album_cover(target_width, target_height):
             surface.blit(text, text_rect)
         except Exception as e:
             pass  # If font rendering fails, just use the gradient
-        
+
         return surface
     except Exception as e:
         print(f"DEBUG: discogs_handling.py - Error creating fallback album cover: {e}")

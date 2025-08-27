@@ -67,9 +67,17 @@ async def start_menu():
     """Displays the main start menu."""
     print("DEBUG: ui.py - start_menu called")
     
-    # Wake up backend once at the start
-    from snake_logic import wake_up_backend
-    await wake_up_backend()
+    # Wake up backend once at the start and wait for confirmation
+    from snake_logic import wake_up_backend, show_backend_loading_screen
+    backend_ready = await wake_up_backend()
+    
+    if not backend_ready:
+        print("DEBUG: ui.py - Backend not ready, showing loading screen")
+        await show_backend_loading_screen(screen)
+        # Try one more time
+        backend_ready = await wake_up_backend()
+        if not backend_ready:
+            print("DEBUG: ui.py - Backend still not ready, but continuing anyway")
     
     clock = pygame.time.Clock()
     
