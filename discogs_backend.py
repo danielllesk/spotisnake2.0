@@ -31,7 +31,6 @@ CORS(app,
 
 # Discogs API configuration
 DISCOGS_API_URL = "https://api.discogs.com"
-DISCOGS_USER_AGENT = "DiscogSnake/1.0 +https://github.com/yourusername/discogsnake"
 DISCOGS_TOKEN = os.environ.get("DISCOGS_TOKEN", "")
 
 @app.route('/ping', methods=['GET'])
@@ -63,7 +62,6 @@ def search_albums():
         }
         
         headers = {
-            'User-Agent': DISCOGS_USER_AGENT,
             'Accept': 'application/json'
         }
         
@@ -111,9 +109,7 @@ def download_album_cover():
         logging.debug(f"DEBUG: discogs_backend.py - Downloading image from: {image_url}")
         
         # Download the image
-        headers = {
-            'User-Agent': DISCOGS_USER_AGENT
-        }
+        headers = {}
         
         response = requests.get(image_url, headers=headers, timeout=10)
         response.raise_for_status()
@@ -188,7 +184,6 @@ def get_album_details(album_id):
         album_url = f"{DISCOGS_API_URL}/releases/{album_id}"
         
         headers = {
-            'User-Agent': DISCOGS_USER_AGENT,
             'Accept': 'application/json'
         }
         
