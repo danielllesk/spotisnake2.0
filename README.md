@@ -31,3 +31,6 @@ A Snake game that uses Discogs album covers as the puzzle pieces! Collect fruit 
 - Backend: Flask API for Discogs integration
 - API: Discogs Database API
 - Deployment: Render (Backend) + itch.io (Frontend)
+ 
+
+ **Check spotisnake repo for more in depth analysis on logic**
