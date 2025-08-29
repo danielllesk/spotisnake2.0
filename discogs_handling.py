@@ -728,8 +728,8 @@ async def get_album_search_input(screen, font):
                 if album['image_url'] and album['id'] not in album_covers:
                     try:
                         print(f"DEBUG: discogs_handling.py - Downloading cover on-demand for {album['title']}")
-                        # Download the real cover directly instead of creating visual cover first
-                        real_cover = await download_and_resize_album_cover_async(album['image_url'], 50, 50)
+                        # Download the real cover at higher quality
+                        real_cover = await download_and_resize_album_cover_async(album['image_url'], 120, 120)
                         if real_cover:
                             album_covers[album['id']] = real_cover
                             print(f"DEBUG: discogs_handling.py - Downloaded real cover for {album['title']}")
@@ -864,7 +864,7 @@ async def get_album_search_input(screen, font):
                                             album_data = {
                                                 'title': title,
                                                 'id': album.get('id', 0),
-                                                'image_url': album.get('thumb', None),
+                                                'image_url': album.get('cover_image', album.get('thumb', None)),
                                                 'artist': artist
                                             }
                                             unique_albums.append(album_data)

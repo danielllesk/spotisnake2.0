@@ -476,17 +476,13 @@ async def start_game(screen, album_result=None):
         # Try a more conservative approach - download at original size and scale less aggressively
         print(f"DEBUG: snake_logic.py - Using conservative scaling approach")
         
-        # Download at original 150x150 size first
-        original_cover = await download_and_resize_album_cover_async(album_image_url, 150, 150)
+        # Download at higher quality 300x300 size first
+        original_cover = await download_and_resize_album_cover_async(album_image_url, 300, 300)
         if original_cover:
-            print(f"DEBUG: snake_logic.py - Downloaded original 150x150 image")
+            print(f"DEBUG: snake_logic.py - Downloaded original 300x300 image")
             
-            # Scale up to 300x300 (2x instead of 4x) for better quality
-            medium_cover = pygame.transform.scale(original_cover, (300, 300))
-            print(f"DEBUG: snake_logic.py - Scaled to 300x300 for better quality")
-            
-            # Scale up to final size
-            album_cover = pygame.transform.scale(medium_cover, (width, height))
+            # Scale directly to final size for better quality
+            album_cover = pygame.transform.scale(original_cover, (width, height))
             print(f"DEBUG: snake_logic.py - Final scale to {width}x{height}")
         else:
             print(f"DEBUG: snake_logic.py - Failed to download original image, using fallback")
