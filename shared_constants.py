@@ -63,7 +63,7 @@ LIGHT_GREY = (40,40,40)
 DARK_GREY = (30,30,30)
 
 # Game settings
-SNAKE_SPEED = 10  # How often the snake moves
+SNAKE_SPEED = 7  # How often the snake moves
 GRID_SIZE = 30  # Size for snake movement
 ALBUM_GRID_SIZE = 60  # Size for album pieces
 

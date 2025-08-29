@@ -401,7 +401,7 @@ async def start_game(screen, album_result=None):
     print("DEBUG: snake_logic.py - start_game called")
     print(f"DEBUG: snake_logic.py - fruit_image available: {fruit_image is not None}")
     pygame.display.set_caption('DiscogSnake')
-    
+
     # Show loading screen (backend wake-up moved to start menu)
     await show_backend_loading_screen(screen)
 
@@ -505,8 +505,8 @@ async def start_game(screen, album_result=None):
 
     # Initialize game state
     # Snake should be fixed size (5 blocks) and not grow
-    snake = [(width//2, height//2), (width//2-GRID_SIZE, height//2), (width//2-GRID_SIZE*2, height//2), 
-             (width//2-GRID_SIZE*3, height//2), (width//2-GRID_SIZE*4, height//2)]
+    snake_pos = [width//2, height//2]
+    snake_body = [[snake_pos[0] - i * GRID_SIZE, snake_pos[1]] for i in range(5)]
     snake_direction = [GRID_SIZE, 0]
     food = None
     score = 0
@@ -549,7 +549,7 @@ async def start_game(screen, album_result=None):
             food = (x, y)
             # Don't place food on snake or on revealed album grid positions
             fruit_album_grid = (food[0] // ALBUM_GRID_SIZE, food[1] // ALBUM_GRID_SIZE)
-            if food not in snake and fruit_album_grid not in revealed_pieces:
+            if food not in snake_body and fruit_album_grid not in revealed_pieces:
                 print(f"DEBUG: snake_logic.py - Generated food at {food}, revealed pieces: {len(revealed_pieces)}")
                 break
             attempts += 1
@@ -561,16 +561,11 @@ async def start_game(screen, album_result=None):
                 for y in range(0, height, GRID_SIZE):
                     pos = (x, y)
                     pos_album_grid = (pos[0] // ALBUM_GRID_SIZE, pos[1] // ALBUM_GRID_SIZE)
-                    if pos not in snake and pos_album_grid not in revealed_pieces:
+                    if pos not in snake_body and pos_album_grid not in revealed_pieces:
                         food = pos
                         print(f"DEBUG: snake_logic.py - Fallback food at {food}")
-                        return
+                return
 
-    def draw_snake():
-        # Draw snake as individual green rectangles
-        for segment in snake:
-            pygame.draw.rect(screen, GREEN, (segment[0], segment[1], GRID_SIZE, GRID_SIZE))
-            pygame.draw.rect(screen, BLACK, (segment[0], segment[1], GRID_SIZE, GRID_SIZE), 1)
 
     def draw_food():
         if food:
@@ -579,7 +574,7 @@ async def start_game(screen, album_result=None):
             
             if fruit_image:
                 screen.blit(fruit_image, (food[0], food[1] - bounce_offset))
-            else:
+        else:
                 pygame.draw.rect(screen, RED, (food[0], food[1] - bounce_offset, GRID_SIZE, GRID_SIZE))
                 pygame.draw.rect(screen, BLACK, (food[0], food[1] - bounce_offset, GRID_SIZE, GRID_SIZE), 1)
 
@@ -590,7 +585,7 @@ async def start_game(screen, album_result=None):
             px, py = pos[0] * ALBUM_GRID_SIZE, pos[1] * ALBUM_GRID_SIZE
             if pos in album_pieces:
                 screen.blit(album_pieces[pos], (px, py))
-
+        
     def draw_ui():
         # Use better retro fonts
         try:
@@ -633,7 +628,7 @@ async def start_game(screen, album_result=None):
     await show_click_to_start_screen(screen)
     
     # Speed progression variables
-    current_speed = 6  # Start at 6
+    current_speed = 7  # Start at 7
     speed_increase_interval = 5  # Increase every 5 pieces
     pieces_eaten = 0
     
@@ -666,12 +661,12 @@ async def start_game(screen, album_result=None):
                     return
 
         # Move snake
-        new_head = (snake[0][0] + snake_direction[0], snake[0][1] + snake_direction[1])
+        new_head = (snake_body[0][0] + snake_direction[0], snake_body[0][1] + snake_direction[1])
         
         # Check for collisions
         if (new_head[0] < 0 or new_head[0] >= width or 
             new_head[1] < 0 or new_head[1] >= height or 
-            new_head in snake):
+            new_head in snake_body):
             print(f"DEBUG: snake_logic.py - Game over due to collision at {new_head}")
             game_over = True
             break
@@ -684,11 +679,11 @@ async def start_game(screen, album_result=None):
             break
 
         # Move snake (fixed size, so we remove tail and add new head)
-        snake.pop()  # Remove tail
-        snake.insert(0, new_head)  # Add new head
+        snake_body.pop()  # Remove tail
+        snake_body.insert(0, new_head)  # Add new head
         
         # Check if food is eaten
-        if snake[0] == food:
+        if snake_body[0] == food:
             score += 10
             pieces_eaten += 1
             # Reveal the album piece at the grid position like the original
@@ -718,8 +713,11 @@ async def start_game(screen, album_result=None):
         # Draw revealed album pieces first (background)
         draw_album_pieces()
         
-        # Draw snake and food on top
-        draw_snake()
+        # Draw snake as individual blocks
+        for block in snake_body:
+            pygame.draw.rect(screen, GREEN, pygame.Rect(block[0], block[1], GRID_SIZE, GRID_SIZE))
+        
+        # Draw food on top
         draw_food()
         
         # Draw UI
